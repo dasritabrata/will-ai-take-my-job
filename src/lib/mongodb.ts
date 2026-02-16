@@ -32,10 +32,19 @@ export async function connectDB(): Promise<typeof mongoose> {
   }
 
   if (!cached.promise) {
-    cached.promise = mongoose.connect(getMongoUri(), {
-      bufferCommands: false,
-      dbName: process.env.MONGODB_DB,
-    });
+    cached.promise = mongoose
+      .connect(getMongoUri(), {
+        bufferCommands: false,
+        dbName: process.env.MONGODB_DB,
+        serverSelectionTimeoutMS: 10000,
+        socketTimeoutMS: 45000,
+        maxPoolSize: 10,
+      })
+      .catch((error) => {
+        // Clear poisoned promise so subsequent requests can retry cleanly.
+        cached.promise = null;
+        throw error;
+      });
   }
 
   cached.conn = await cached.promise;
