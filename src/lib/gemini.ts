@@ -25,9 +25,9 @@ function extractJsonBlock(input: string): string {
 }
 
 function getGeminiApiKey(): string {
-  const key = process.env.GEMINI_API_KEY;
+  const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!key) {
-    throw new Error("Missing GEMINI_API_KEY in environment variables");
+    throw new Error("Missing GEMINI_API_KEY (or GOOGLE_API_KEY) in environment variables");
   }
   return key;
 }
@@ -45,38 +45,50 @@ export async function validateAndStandardizeRoleWithGemini(rawInput: string): Pr
     `Input: ${rawInput}`,
   ].join("\n");
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.1,
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      }),
-      cache: "no-store",
-    },
-  );
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.1,
+          },
+        }),
+        cache: "no-store",
+        signal: controller.signal,
+      },
+    );
 
-  if (!response.ok) {
-    throw new Error("Gemini validation request failed");
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`Gemini validation request failed (${response.status}): ${body.slice(0, 220)}`);
+    }
+
+    const data = (await response.json()) as GeminiApiResponse;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    if (!text) {
+      throw new Error("Gemini validation response was empty");
+    }
+
+    const parsed = JSON.parse(extractJsonBlock(text)) as Partial<GeminiRoleValidation>;
+    const standardizedRole = (parsed.standardized_role ?? "").trim();
+    const industry = (parsed.industry ?? "").trim() || inferIndustry(standardizedRole || rawInput);
+
+    return {
+      is_valid: Boolean(parsed.is_valid),
+      standardized_role: standardizedRole,
+      industry,
+    };
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const data = (await response.json()) as GeminiApiResponse;
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-  const parsed = JSON.parse(extractJsonBlock(text)) as Partial<GeminiRoleValidation>;
-
-  const standardizedRole = (parsed.standardized_role ?? "").trim();
-  const industry = (parsed.industry ?? "").trim() || inferIndustry(standardizedRole || rawInput);
-
-  return {
-    is_valid: Boolean(parsed.is_valid),
-    standardized_role: standardizedRole,
-    industry,
-  };
 }

@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 
 import { searchJobs, toErrorPayload } from "@/lib/jobService";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

@@ -25,6 +25,7 @@ export default function HomeSearch() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const normalizedQuery = useMemo(() => slugify(query), [query]);
 
@@ -38,12 +39,17 @@ export default function HomeSearch() {
     const controller = new AbortController();
     const timeout = setTimeout(async () => {
       setIsLoading(true);
+      setSearchError(null);
       try {
         const response = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, {
           signal: controller.signal,
         });
 
         if (!response.ok) {
+          const errorPayload = (await response.json().catch(() => ({ error: "Search failed" }))) as {
+            error?: string;
+          };
+          setSearchError(errorPayload.error ?? "Search failed");
           setSuggestions([]);
           return;
         }
@@ -51,6 +57,7 @@ export default function HomeSearch() {
         const data = (await response.json()) as Suggestion[];
         setSuggestions(data);
       } catch {
+        setSearchError("Search unavailable right now");
         setSuggestions([]);
       } finally {
         setIsLoading(false);
@@ -126,6 +133,7 @@ export default function HomeSearch() {
           ) : null}
         </AnimatePresence>
       </motion.form>
+      {searchError ? <p className="mt-2 text-sm text-rose-300">{searchError}</p> : null}
     </div>
   );
 }

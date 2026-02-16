@@ -1,7 +1,7 @@
 import { generateRisk } from "@/lib/generateRisk";
 import { validateAndStandardizeRoleWithGemini } from "@/lib/gemini";
 import { connectDB } from "@/lib/mongodb";
-import { normalizeJobId } from "@/lib/jobUtils";
+import { isRealisticProfession, normalizeJobId, standardizedRoleName } from "@/lib/jobUtils";
 import Job, { type JobDocument } from "@/models/job";
 import type { JobAnalysis } from "@/types/job";
 
@@ -29,6 +29,19 @@ function toJobAnalysis(job: JobDocument): JobAnalysis {
   };
 }
 
+function fallbackRoleValidation(rawJobInput: string): { is_valid: boolean; standardized_role: string; industry: string } {
+  const standardizedRole = standardizedRoleName(rawJobInput);
+  const valid = Boolean(standardizedRole) && isRealisticProfession(standardizedRole);
+
+  const generated = standardizedRole ? generateRisk(standardizedRole) : null;
+
+  return {
+    is_valid: valid,
+    standardized_role: standardizedRole,
+    industry: generated?.industry ?? "General",
+  };
+}
+
 export async function getOrCreateJob(rawJobInput: string): Promise<JobAnalysis> {
   const normalizedJobId = normalizeJobId(rawJobInput);
 
@@ -44,6 +57,11 @@ export async function getOrCreateJob(rawJobInput: string): Promise<JobAnalysis> 
   }
 
   const validated = await validateAndStandardizeRoleWithGemini(rawJobInput).catch((error: unknown) => {
+    const fallback = fallbackRoleValidation(rawJobInput);
+    if (fallback.is_valid) {
+      return fallback;
+    }
+
     if (error instanceof Error && error.message.includes("GEMINI_API_KEY")) {
       throw new AppError("Server configuration error: GEMINI_API_KEY is missing", 500);
     }
