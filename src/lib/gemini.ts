@@ -37,6 +37,7 @@ export async function validateAndStandardizeRoleWithGemini(rawInput: string): Pr
 
   const prompt = [
     "You are a strict profession normalizer.",
+    "Interpret the role in an India context (job market, common titles, and usage in India).",
     "Given user input, decide if it is a realistic profession/job role.",
     "If valid, convert to a concise standardized role title.",
     "Return ONLY JSON with keys: is_valid (boolean), standardized_role (string), industry (string).",
