@@ -29,11 +29,13 @@ function toJobAnalysis(job: JobDocument): JobAnalysis {
   };
 }
 
-function fallbackRoleValidation(rawJobInput: string): { is_valid: boolean; standardized_role: string; industry: string } {
+async function fallbackRoleValidation(
+  rawJobInput: string,
+): Promise<{ is_valid: boolean; standardized_role: string; industry: string }> {
   const standardizedRole = standardizedRoleName(rawJobInput);
   const valid = Boolean(standardizedRole) && isRealisticProfession(standardizedRole);
 
-  const generated = standardizedRole ? generateRisk(standardizedRole) : null;
+  const generated = standardizedRole ? await generateRisk(standardizedRole) : null;
 
   return {
     is_valid: valid,
@@ -56,8 +58,8 @@ export async function getOrCreateJob(rawJobInput: string): Promise<JobAnalysis> 
     return toJobAnalysis(existing);
   }
 
-  const validated = await validateAndStandardizeRoleWithGemini(rawJobInput).catch((error: unknown) => {
-    const fallback = fallbackRoleValidation(rawJobInput);
+  const validated = await validateAndStandardizeRoleWithGemini(rawJobInput).catch(async (error: unknown) => {
+    const fallback = await fallbackRoleValidation(rawJobInput);
     if (fallback.is_valid) {
       return fallback;
     }
@@ -83,7 +85,7 @@ export async function getOrCreateJob(rawJobInput: string): Promise<JobAnalysis> 
     return toJobAnalysis(existingByCanonicalRole);
   }
 
-  const generated = generateRisk(validated.standardized_role);
+  const generated = await generateRisk(validated.standardized_role);
 
   const created = await Job.findOneAndUpdate(
     { jobId: canonicalJobId },
