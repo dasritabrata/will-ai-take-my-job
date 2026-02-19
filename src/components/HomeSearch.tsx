@@ -10,6 +10,9 @@ type Suggestion = {
   industry: string;
 };
 
+const MIN_QUERY_LENGTH = 7;
+const MIN_SUGGESTION_LENGTH = 1;
+
 function slugify(input: string): string {
   return input
     .trim()
@@ -28,11 +31,19 @@ export default function HomeSearch() {
   const [searchError, setSearchError] = useState<string | null>(null);
 
   const normalizedQuery = useMemo(() => slugify(query), [query]);
+  const hasSufficientLength = useMemo(() => query.trim().length >= MIN_QUERY_LENGTH, [query]);
+  const hasExactMatch = useMemo(
+    () => suggestions.some((item) => item.jobId === normalizedQuery),
+    [normalizedQuery, suggestions],
+  );
+  const canAnalyze = normalizedQuery.length > 0 && hasSufficientLength && !hasExactMatch;
 
   useEffect(() => {
     const trimmed = query.trim();
-    if (trimmed.length < 2) {
+    if (trimmed.length < MIN_SUGGESTION_LENGTH) {
       setSuggestions([]);
+      setSearchError(null);
+      setIsLoading(false);
       return;
     }
 
@@ -56,7 +67,10 @@ export default function HomeSearch() {
 
         const data = (await response.json()) as Suggestion[];
         setSuggestions(data);
-      } catch {
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
         setSearchError("Search unavailable right now");
         setSuggestions([]);
       } finally {
@@ -84,6 +98,7 @@ export default function HomeSearch() {
         transition={{ duration: 0.4, ease: "easeOut" }}
         onSubmit={(event) => {
           event.preventDefault();
+          if (!canAnalyze) return;
           submit(query);
         }}
         className="relative"
@@ -97,16 +112,18 @@ export default function HomeSearch() {
           className="w-full rounded-2xl border border-white/15 bg-white/10 px-5 py-4 text-lg text-white outline-none backdrop-blur-xl transition focus:border-cyan-300/70"
           aria-label="Search job"
         />
-        <button
-          type="submit"
-          disabled={!normalizedQuery}
-          className="absolute right-2 top-2 rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
-        >
-          Analyze
-        </button>
+        {!hasExactMatch ? (
+          <button
+            type="submit"
+            disabled={!canAnalyze}
+            className="absolute right-2 top-2 rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
+          >
+            Generate using AI
+          </button>
+        ) : null}
 
         <AnimatePresence>
-          {isFocused && (suggestions.length > 0 || isLoading) ? (
+          {isFocused && query.trim().length >= MIN_SUGGESTION_LENGTH && (suggestions.length > 0 || isLoading) ? (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}

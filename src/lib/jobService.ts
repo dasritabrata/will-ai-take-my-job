@@ -101,7 +101,7 @@ export async function getOrCreateJob(rawJobInput: string): Promise<JobAnalysis> 
       },
     },
     {
-      new: true,
+      returnDocument: "after",
       upsert: true,
       setDefaultsOnInsert: true,
     },
